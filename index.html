@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Scoundrel</title>
+    <meta name="description" content="Scoundrel, the solo dungeon crawler played with a deck of cards. Fight monsters, pick up weapons, drink potions and make it through the dungeon." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script>
+      // ?theme=light or ?theme=dark lets the page that embeds the game match its own theme.
+      try {
+        const t = new URLSearchParams(location.search).get("theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
