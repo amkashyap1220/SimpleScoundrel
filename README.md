@@ -37,10 +37,17 @@ npm run build      # the static game in dist/
 
 The game and its high scores run as one Cloudflare Worker at `scoundrel.alexanderk.dev`.
 
+**Every push to `main` deploys the site.** Cloudflare's [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/) watches this repository, runs the tests, builds the game and deploys it. If a test fails, nothing is deployed. Pushes to other branches build a preview version and leave the live site alone. To ship a change, merge it into `main`.
+
+Migrations still run by hand: `npm run db:migrate` whenever a file is added to `migrations/`.
+
+### Setting it up from scratch
+
 1. `npx wrangler login`
 2. `npm run deploy`. This runs the tests, builds the game, and creates the Worker and its D1 database (named `scoundrel`) on the first deploy.
-3. `npm run db:migrate` creates the tables in that database. Run it again whenever a file is added to `migrations/`.
+3. `npm run db:migrate` creates the tables in that database.
 4. In the Cloudflare dashboard, open the `scoundrel` Worker, then **Settings > Domains & Routes > Add > Custom domain**, and enter `scoundrel.alexanderk.dev`.
+5. Still in the Worker's **Settings > Build**, connect this GitHub repository. Set the production branch to `main`, leave the build command empty (`wrangler.jsonc` already runs the tests and the build before each deploy), keep `npx wrangler deploy` as the deploy command, and add the build variable `NODE_VERSION` = `22`.
 
 ## How it's built
 
