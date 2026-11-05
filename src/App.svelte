@@ -9,6 +9,8 @@
   const HOW_TO_PLAY = "https://alexanderk.dev/repositories/scoundrel";
   const SAVE_KEY = "scoundrel:game";
 
+  const NAME_KEY = "scoundrel:name";
+
   function randomSeed() {
     const a = new Uint32Array(2);
     crypto.getRandomValues(a);
@@ -20,23 +22,95 @@
       const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
       if (saved && saved.seed && Array.isArray(saved.room)) return saved;
     } catch {}
-    return newGame(randomSeed());
+    return null;
+  }
+
+  async function api(path, options = {}) {
+    const res = await fetch(path, {
+      ...options,
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(6000),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "The high-score server didn't answer.");
+    return data;
+  }
+
+  // A new game, dealt by the server so its score can go on the high scores.
+  // Without the server (offline, or running locally) the game is dealt here
+  // and just isn't ranked.
+  async function deal() {
+    try {
+      const { id, seed } = await api("/api/games", { method: "POST" });
+      return { ...newGame(seed), gameId: id, submitted: null };
+    } catch {
+      return { ...newGame(randomSeed()), gameId: null, submitted: null };
+    }
   }
 
   let game = $state(load());
   let selectedId = $state(null);
   let error = $state("");
+  let dealing = $state(false);
+
+  let scores = $state(null);         // the top 10, or null while loading
+  let scoresError = $state("");
+  let name = $state(readName());
+  let saving = $state(false);
+  let saveError = $state("");
+
+  function readName() {
+    try { return localStorage.getItem(NAME_KEY) ?? ""; } catch { return ""; }
+  }
+
+  async function loadScores() {
+    try {
+      scores = (await api("/api/scores")).scores;
+      scoresError = "";
+    } catch {
+      scoresError = "High scores aren't available right now.";
+    }
+  }
+
+  async function saveScore(event) {
+    event.preventDefault();
+    if (saving || !game.gameId || game.submitted) return;
+    saving = true;
+    saveError = "";
+    try {
+      const result = await api("/api/scores", {
+        method: "POST",
+        body: JSON.stringify({ id: game.gameId, name: name.trim(), moves: game.moves }),
+      });
+      game.submitted = { rank: result.rank, name: result.name };
+      name = result.name;
+      try { localStorage.setItem(NAME_KEY, result.name); } catch {}
+      await loadScores();
+    } catch (e) {
+      saveError = e.message;
+    } finally {
+      saving = false;
+    }
+  }
+
+  if (!game) restart();
+  loadScores();
 
   $effect(() => {
+    if (!game) return;
     const snapshot = JSON.stringify(game);
     try { localStorage.setItem(SAVE_KEY, snapshot); } catch {}
   });
 
-  let selected = $derived(game.room.find((c) => cardId(c) === selectedId) ?? null);
-  let finalScore = $derived(score(game));
-  let hpPct = $derived(Math.max(0, game.hp) / MAX_HP * 100);
+  function formatDate(iso) {
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  let selected = $derived(game?.room.find((c) => cardId(c) === selectedId) ?? null);
+  let finalScore = $derived(game ? score(game) : null);
+  let hpPct = $derived(game ? Math.max(0, game.hp) / MAX_HP * 100 : 100);
   let weaponLimit = $derived(
-    game.weapon && game.weapon.slain.length ? game.weapon.slain[game.weapon.slain.length - 1].rank : null,
+    game?.weapon && game.weapon.slain.length ? game.weapon.slain[game.weapon.slain.length - 1].rank : null,
   );
 
   function run(action) {
@@ -54,10 +128,14 @@
     selectedId = selectedId === cardId(card) ? null : cardId(card);
   }
 
-  function restart() {
-    game = newGame(randomSeed());
+  async function restart() {
+    if (dealing) return;
+    dealing = true;
     selectedId = null;
     error = "";
+    saveError = "";
+    game = await deal();
+    dealing = false;
   }
 
   function confirmRestart() {
@@ -94,6 +172,9 @@
     </nav>
   </header>
 
+  {#if !game}
+  <p class="dealing">Dealing a new dungeon…</p>
+  {:else}
   <section class="status" aria-label="Status">
     <div class="health">
       <div class="health-label">
@@ -147,7 +228,21 @@
       {#if game.won}Your score is the health you kept{finalScore > game.hp ? ", plus the last potion" : ""}.
       {:else}Your score is minus the monsters still in the dungeon.{/if}
     </p>
-    <button type="button" class="primary" onclick={restart}>Play again</button>
+    {#if game.submitted}
+      <p class="saved">Saved as {game.submitted.name}: number {game.submitted.rank} of all time.</p>
+    {:else if game.gameId}
+      <form class="save" onsubmit={saveScore}>
+        <label for="name">Your name for the high scores</label>
+        <div class="save-row">
+          <input id="name" bind:value={name} maxlength="20" autocomplete="nickname" placeholder="Name" required />
+          <button type="submit" class="secondary" disabled={saving || !name.trim()}>{saving ? "Saving…" : "Save score"}</button>
+        </div>
+        {#if saveError}<p class="save-error" role="alert">{saveError}</p>{/if}
+      </form>
+    {:else}
+      <p class="saved">This dungeon was dealt offline, so its score can't go on the high scores.</p>
+    {/if}
+    <button type="button" class="primary" onclick={restart} disabled={dealing}>{dealing ? "Dealing…" : "Play again"}</button>
   </section>
   {:else}
   <section class="actions" aria-label="Actions">
@@ -207,6 +302,29 @@
       </p>
     {:else}
       <p class="weapon-note">None yet. Pick up a ♦ to fight with it.</p>
+    {/if}
+  </section>
+  {/if}
+
+  <section class="scores" aria-label="High scores">
+    <h2>High scores</h2>
+    {#if scores && scores.length}
+      <ol>
+        {#each scores as row, i}
+          <li class:mine={game?.submitted && game.submitted.rank === i + 1 && game.submitted.name === row.name}>
+            <span class="rank">{i + 1}</span>
+            <span class="who">{row.name}</span>
+            <span class="when">{formatDate(row.date)}</span>
+            <span class="pts">{row.score}</span>
+          </li>
+        {/each}
+      </ol>
+    {:else if scores}
+      <p class="empty">No scores yet. Make it through the dungeon and be the first.</p>
+    {:else if scoresError}
+      <p class="empty">{scoresError}</p>
+    {:else}
+      <p class="empty">Loading…</p>
     {/if}
   </section>
 
@@ -332,4 +450,43 @@
   .score { margin: 10px 0 4px; font-size: 1.1rem; }
   .score strong { font: 700 2.2rem/1 Georgia, serif; margin-left: 6px; }
   .why { margin: 0 0 14px; font-size: 0.85rem; color: var(--muted); }
+  .over button:disabled { opacity: 0.6; }
+  .save { margin: 0 auto 14px; max-width: 360px; text-align: left; }
+  .save label { display: block; margin-bottom: 6px; font-size: 0.85rem; color: var(--muted); }
+  .save-row { display: flex; gap: 8px; }
+  .save input {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--ink);
+    font: inherit;
+    font-size: 16px; /* 16px stops iOS zooming in on focus */
+  }
+  .save input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .save-error { margin: 6px 0 0; font-size: 0.85rem; color: var(--danger); }
+  .saved { margin: 0 0 14px; font-size: 0.9rem; }
+  .dealing { margin: 40px 0; text-align: center; color: var(--muted); }
+
+  .scores { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .scores ol { list-style: none; margin: 10px 0 0; padding: 0; }
+  .scores li {
+    display: grid;
+    grid-template-columns: 1.8em 1fr auto 3em;
+    gap: 10px;
+    align-items: baseline;
+    padding: 7px 8px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+  }
+  .scores li:nth-child(odd) { background: var(--surface); }
+  .scores li.mine { box-shadow: inset 0 0 0 2px var(--select); }
+  .rank { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .when { font-size: 0.8rem; color: var(--muted); }
+  .pts { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .empty { margin: 8px 0 0; font-size: 0.9rem; color: var(--muted); }
 </style>

@@ -27,15 +27,25 @@ The game ends when your health reaches 0 or you make it through the whole dungeo
 
 ```sh
 npm install
-npm run dev     # the game at http://localhost:5173
-npm test        # the rules tests
-npm run build   # the static site in dist/
+npm run dev        # just the game at http://localhost:5173 (offline: no high scores)
+npm run dev:full   # the game and the high-score server at http://localhost:8787
+npm test           # the rules and server tests (Node 22.13 or newer)
+npm run build      # the static game in dist/
 ```
+
+## Deploying
+
+The game and its high scores run as one Cloudflare Worker at `scoundrel.alexanderk.dev`.
+
+1. `npx wrangler login`
+2. `npm run deploy`. This runs the tests, builds the game, and creates the Worker and its D1 database (named `scoundrel`) on the first deploy.
+3. `npm run db:migrate` creates the tables in that database. Run it again whenever a file is added to `migrations/`.
+4. In the Cloudflare dashboard, open the `scoundrel` Worker, then **Settings > Domains & Routes > Add > Custom domain**, and enter `scoundrel.alexanderk.dev`.
 
 ## How it's built
 
 - `src/rules.js` is the whole game as pure functions: a seeded shuffle, `act(state, action)` for every move, and `score(state)`. It has no browser code, so the same file can run on a server to replay a finished game from its seed and moves and check its score.
 - `src/App.svelte` and `src/Card.svelte` are the interface, in [Svelte 5](https://svelte.dev), built with [Vite](https://vite.dev). Tap a card to see what it would do, then confirm. The game in progress is kept in the browser, so a reload doesn't lose it.
-- `tests/rules.test.js` checks the rules with Node's built-in test runner.
-
-Coming next: shared high scores (name, score and date) on a Cloudflare Worker with a D1 database, which replays every submitted game before saving its score.
+- `worker/index.js` is the high-score server, a [Cloudflare Worker](https://developers.cloudflare.com/workers/) with a [D1](https://developers.cloudflare.com/d1/) database (`migrations/`). It deals each game (a random seed) and keeps the seed. When a game ends, the browser sends only the name and the list of moves. The server replays them with the same `rules.js`, refuses unknown games, games already scored, unfinished games and illegal moves, and saves the score the replay gives, with the date. A rate limit slows down spam.
+- If the server can't be reached, the game is dealt in the browser instead and can still be played, just not ranked.
+- `tests/` checks the rules, and the server against Node's built-in SQLite standing in for D1, with Node's built-in test runner.
