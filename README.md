@@ -45,7 +45,7 @@ The game and its high scores run as one Cloudflare Worker at `scoundrel.alexande
 ## How it's built
 
 - `src/rules.js` is the whole game as pure functions: a seeded shuffle, `act(state, action)` for every move, and `score(state)`. It has no browser code, so the same file can run on a server to replay a finished game from its seed and moves and check its score.
-- `src/App.svelte` and `src/Card.svelte` are the interface, in [Svelte 5](https://svelte.dev), built with [Vite](https://vite.dev). Tap a card to see what it would do, then confirm. The game in progress is kept in the browser, so a reload doesn't lose it.
+- `src/App.svelte`, `src/Card.svelte` (cards drawn like a real deck) and `src/Icon.svelte` are the interface, in [Svelte 5](https://svelte.dev), built with [Vite](https://vite.dev). Tap a card to see what it would do, then confirm. The game in progress is kept in the browser, so a reload doesn't lose it.
 - `worker/index.js` is the high-score server, a [Cloudflare Worker](https://developers.cloudflare.com/workers/) with a [D1](https://developers.cloudflare.com/d1/) database (`migrations/`). It deals each game (a random seed) and keeps the seed. When a game ends, the browser sends only the name and the list of moves. The server replays them with the same `rules.js`, refuses unknown games, games already scored, unfinished games and illegal moves, and saves the score the replay gives, with the date. A rate limit slows down spam.
 - If the server can't be reached, the game is dealt in the browser instead and can still be played, just not ranked.
 - `tests/` checks the rules, and the server against Node's built-in SQLite standing in for D1, with Node's built-in test runner.

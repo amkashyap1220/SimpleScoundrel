@@ -1,5 +1,6 @@
 <script>
   import Card from "./Card.svelte";
+  import Icon from "./Icon.svelte";
   import {
     newGame, act, score, canAvoid, canUseWeapon, weaponDamage, cardKind, cardId, cardName,
     MAX_HP, PLAYS_PER_ROOM,
@@ -7,6 +8,9 @@
 
   // The project page on the website: rules, links, README and how it's built.
   const HOW_TO_PLAY = "https://alexanderk.dev/repositories/scoundrel";
+  const SITE = "https://alexanderk.dev/";
+  // Inside the site's Lab page the site is all around the game, so the way home only shows on the game's own page.
+  const embedded = window.parent !== window;
   const SAVE_KEY = "scoundrel:game";
 
   const NAME_KEY = "scoundrel:name";
@@ -142,7 +146,7 @@
     if (game.over || game.moves.length === 0 || confirm("Give up this dungeon and start a new one?")) restart();
   }
 
-  // What a tap on this card would do, shown on the card.
+  // What a tap on this card would do, for screen readers.
   function hint(card) {
     const kind = cardKind(card);
     if (kind === "potion") {
@@ -165,10 +169,13 @@
 
 <main>
   <header>
+    {#if !embedded}
+      <a class="icon-btn" href={SITE} aria-label="Back to alexanderk.dev" title="Back to alexanderk.dev"><Icon name="home" /></a>
+    {/if}
     <h1>Scoundrel</h1>
     <nav>
-      <a href={HOW_TO_PLAY} target="_blank" rel="noopener">How to play</a>
-      <button type="button" class="link" onclick={confirmRestart}>New game</button>
+      <a class="icon-btn" href={HOW_TO_PLAY} target="_blank" rel="noopener" aria-label="How to play" title="How to play"><Icon name="help" /></a>
+      <button type="button" class="icon-btn" onclick={confirmRestart} aria-label="New game" title="New game"><Icon name="restart" /></button>
     </nav>
   </header>
 
@@ -203,12 +210,9 @@
 
   <section class="room" aria-label="Room">
     {#each game.room as card (cardId(card))}
-      {@const [h, tone] = hint(card)}
       <Card
         {card}
         selected={selectedId === cardId(card)}
-        hint={h}
-        hintTone={tone}
         label={cardLabel(card)}
         onclick={game.over ? null : () => pick(card)}
       />
@@ -229,20 +233,20 @@
       {:else}Your score is minus the monsters still in the dungeon.{/if}
     </p>
     {#if game.submitted}
-      <p class="saved">Saved as {game.submitted.name}: number {game.submitted.rank} of all time.</p>
+      <p class="saved">Saved as {game.submitted.name}, #{game.submitted.rank} of all time.</p>
     {:else if game.gameId}
       <form class="save" onsubmit={saveScore}>
         <label for="name">Your name for the high scores</label>
         <div class="save-row">
           <input id="name" bind:value={name} maxlength="20" autocomplete="nickname" placeholder="Name" required />
-          <button type="submit" class="secondary" disabled={saving || !name.trim()}>{saving ? "Saving…" : "Save score"}</button>
+          <button type="submit" class="act" disabled={saving || !name.trim()} aria-label="Save score" title="Save score"><Icon name="trophy" /></button>
         </div>
         {#if saveError}<p class="save-error" role="alert">{saveError}</p>{/if}
       </form>
     {:else}
       <p class="saved">This dungeon was dealt offline, so its score can't go on the high scores.</p>
     {/if}
-    <button type="button" class="primary" onclick={restart} disabled={dealing}>{dealing ? "Dealing…" : "Play again"}</button>
+    <button type="button" class="act primary again" onclick={restart} disabled={dealing} aria-label="Play again" title="Play again"><Icon name="restart" /></button>
   </section>
   {:else}
   <section class="actions" aria-label="Actions">
@@ -250,33 +254,37 @@
       {@const kind = cardKind(selected)}
       {#if kind === "monster"}
         {#if canUseWeapon(game, selected)}
-          <button type="button" class="primary" onclick={() => run({ type: "play", card: selectedId })}>
-            Use weapon (−{weaponDamage(game, selected)})
+          {@const dmg = weaponDamage(game, selected)}
+          <button type="button" class="act primary" onclick={() => run({ type: "play", card: selectedId })}
+            aria-label="Fight with your weapon, losing {dmg} health" title="Fight with your weapon">
+            <Icon name="sword" /><span class="n">−{dmg}</span>
           </button>
         {/if}
-        <button type="button" class={canUseWeapon(game, selected) ? "secondary" : "primary"}
-          onclick={() => run({ type: "play", card: selectedId, barehanded: true })}>
-          Fight barehanded (−{selected.rank})
+        <button type="button" class="act" class:primary={!canUseWeapon(game, selected)}
+          onclick={() => run({ type: "play", card: selectedId, barehanded: true })}
+          aria-label="Fight barehanded, losing {selected.rank} health" title="Fight barehanded">
+          <Icon name="fist" /><span class="n">−{selected.rank}</span>
         </button>
       {:else if kind === "weapon"}
-        <button type="button" class="primary" onclick={() => run({ type: "play", card: selectedId })}>
-          {game.weapon ? "Swap to this weapon" : "Equip weapon"}
+        <button type="button" class="act primary" onclick={() => run({ type: "play", card: selectedId })}
+          aria-label={game.weapon ? "Swap to this weapon" : "Take this weapon"} title={game.weapon ? "Swap to this weapon" : "Take this weapon"}>
+          <Icon name="sword" /><span class="n">{selected.rank}</span>
         </button>
       {:else}
-        <button type="button" class="primary" onclick={() => run({ type: "play", card: selectedId })}>
-          {game.potionThisRoom ? "Discard potion (no effect)" : "Drink potion"}
+        {@const heal = game.potionThisRoom ? 0 : Math.min(selected.rank, MAX_HP - game.hp)}
+        <button type="button" class="act primary" onclick={() => run({ type: "play", card: selectedId })}
+          aria-label={game.potionThisRoom ? "Drink it, with no effect: one potion a room" : `Drink it, gaining ${heal} health`}
+          title={game.potionThisRoom ? "Only one potion a room works" : "Drink"}>
+          <Icon name="flask" /><span class="n">+{heal}</span>
         </button>
       {/if}
-      <button type="button" class="ghost" onclick={() => (selectedId = null)}>Cancel</button>
+      <button type="button" class="act ghost" onclick={() => (selectedId = null)} aria-label="Cancel" title="Cancel"><Icon name="close" /></button>
     {:else}
-      <button type="button" class="secondary" disabled={!canAvoid(game)} onclick={() => run({ type: "avoid" })}>
-        Avoid room
+      <button type="button" class="act" disabled={!canAvoid(game)} onclick={() => run({ type: "avoid" })}
+        aria-label="Avoid this room" title={canAvoid(game) ? "Avoid this room" : "You can't avoid this room"}>
+        <Icon name="detour" /><span class="n">Avoid</span>
       </button>
-      <span class="tip">
-        {#if canAvoid(game)}Tap a card to face it, or avoid the whole room.
-        {:else if game.avoidedLast && game.playedThisRoom === 0}You avoided the last room, so you must face this one.
-        {:else}Tap a card to face it.{/if}
-      </span>
+      {#if game.avoidedLast && game.playedThisRoom === 0}<span class="tip">You avoided the last room, so you must face this one.</span>{/if}
     {/if}
   </section>
   {/if}
@@ -297,8 +305,7 @@
         </div>
       </div>
       <p class="weapon-note">
-        Strength {game.weapon.card.rank}.
-        {#if weaponLimit !== null}It can only hit monsters below {weaponLimit}.{:else}It can hit any monster.{/if}
+        {#if weaponLimit !== null}Can only hit monsters below {weaponLimit}.{:else}Can hit any monster.{/if}
       </p>
     {:else}
       <p class="weapon-note">None yet. Pick up a ♦ to fight with it.</p>
@@ -312,7 +319,7 @@
       <ol>
         {#each scores as row, i}
           <li class:mine={game?.submitted && game.submitted.rank === i + 1 && game.submitted.name === row.name}>
-            <span class="rank">{i + 1}</span>
+            <span class="rank">#{i + 1}</span>
             <span class="who">{row.name}</span>
             <span class="when">{formatDate(row.date)}</span>
             <span class="pts">{row.score}</span>
@@ -339,25 +346,31 @@
 
   header {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
+    align-items: center;
+    gap: 8px;
     margin-bottom: 12px;
   }
+  header h1 { flex: 1; }
   h1 {
     margin: 0;
     font: 700 1.6rem/1.1 Georgia, "Times New Roman", serif;
     letter-spacing: 0.01em;
   }
-  nav { display: flex; gap: 16px; align-items: baseline; font-size: 0.95rem; }
-  .link {
+  nav { display: flex; gap: 4px; }
+  .icon-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
     padding: 0;
     border: 0;
+    border-radius: 10px;
     background: none;
-    color: var(--accent);
-    text-decoration: underline;
+    color: var(--ink);
     cursor: pointer;
   }
+  .icon-btn:hover { background: var(--surface); }
+  .icon-btn:focus-visible, .act:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
   h2 {
     margin: 0;
@@ -414,17 +427,24 @@
     min-height: 48px;
     margin-top: 16px;
   }
-  .actions button, .over button {
-    min-height: 44px;
-    padding: 0 18px;
-    border-radius: 10px;
-    border: 1px solid transparent;
-    font-weight: 600;
+  .act {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 52px;
+    min-height: 48px;
+    padding: 0 14px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
     cursor: pointer;
   }
-  .primary { background: var(--accent); color: var(--accent-ink); }
-  .secondary { background: var(--surface); border-color: var(--line) !important; }
-  .ghost { background: none; color: var(--muted); }
+  .act .n { font-size: 1.05rem; }
+  .act.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .act.ghost { border-color: transparent; background: none; color: var(--muted); }
   button:disabled { opacity: 0.45; cursor: not-allowed; }
   .tip { flex: 1 1 200px; font-size: 0.85rem; color: var(--muted); }
 
@@ -451,6 +471,7 @@
   .score strong { font: 700 2.2rem/1 Georgia, serif; margin-left: 6px; }
   .why { margin: 0 0 14px; font-size: 0.85rem; color: var(--muted); }
   .over button:disabled { opacity: 0.6; }
+  .again { min-width: 64px; }
   .save { margin: 0 auto 14px; max-width: 360px; text-align: left; }
   .save label { display: block; margin-bottom: 6px; font-size: 0.85rem; color: var(--muted); }
   .save-row { display: flex; gap: 8px; }
