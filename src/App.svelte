@@ -239,7 +239,7 @@
         <label for="name">Your name for the high scores</label>
         <div class="save-row">
           <input id="name" bind:value={name} maxlength="20" autocomplete="nickname" placeholder="Name" required />
-          <button type="submit" class="act" disabled={saving || !name.trim()} aria-label="Save score" title="Save score"><Icon name="trophy" /></button>
+          <button type="submit" class="act" disabled={saving || !name.trim()}><Icon name="trophy" /><span>{saving ? "Submitting…" : "Submit"}</span></button>
         </div>
         {#if saveError}<p class="save-error" role="alert">{saveError}</p>{/if}
       </form>
