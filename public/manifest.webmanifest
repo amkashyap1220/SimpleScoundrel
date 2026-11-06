@@ -1,0 +1,14 @@
+{
+  "name": "Scoundrel",
+  "short_name": "Scoundrel",
+  "description": "The solo dungeon crawler played with a deck of cards.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1c1828",
+  "theme_color": "#1c1828",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
